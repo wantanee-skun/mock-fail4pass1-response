@@ -19,7 +19,8 @@ app.post('/webhook', (req, res) => {
     console.log("Returning HTTP 400");
     return res.status(400).json({ error: 'Mock 400 error' });
   } else {
-    console.log("Returning HTTP 200");
+    console.log("Returning HTTP 200 and reset requestCount to 0");
+    requestCount = 0;
     return res.status(200).json({ message: 'Success' });
   }
 });
