@@ -1,30 +1,71 @@
-// fail 4 , pass 1
+// server.js
 const express = require('express');
+const path = require('path');
 const app = express();
 const port = 3000;
 
-let requestCount = 0;
-
 app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
-app.post('/webhook', (req, res) => {
-  requestCount++;
+// Webhook log container
+const logs = {
+  'ebr-execute': [],
+  'batch-status': [],
+  'ebr-execute-config': [],
+  'batch-status-config': []
+};
 
- // Log full request body
-  console.log(`\n=== Attempt ${requestCount} ===`);
-  console.log("Request Body:", JSON.stringify(req.body, null, 2));
+// Request count tracker for simulated error response
+const requestCounts = {
+  'ebr-execute': 0,
+  'batch-status': 0,
+  'ebr-execute-config': 0,
+  'batch-status-config': 0
+};
 
-  const cycle = requestCount % 5;
-  if (cycle === 1 || cycle === 2 || cycle === 3 || cycle === 4) {
-    console.log("Returning HTTP 400");
-    return res.status(400).json({ error: 'Mock 400 error' });
-  } else {
-    console.log("Returning HTTP 200 and reset requestCount to 0");
-    requestCount = 0;
-    return res.status(200).json({ message: 'Success' });
-  }
+// Register all POST webhooks
+Object.keys(logs).forEach((type) => {
+  app.post(`/webhook/${type}`, (req, res) => {
+    const timestamp = new Date().toISOString();
+    requestCounts[type]++;
+
+    let response, statusCode;
+    if (requestCounts[type] % 4 !== 0) {
+      statusCode = 400;
+      response = { error: `${type} failed`, timestamp };
+    } else {
+      statusCode = 200;
+      response = { message: `${type} received`, timestamp };
+    }
+
+    logs[type].push({
+      timestamp,
+      headers: req.headers,
+      body: req.body,
+      responseStatus: statusCode,
+      responseBody: response,
+      responseHeaders: { 'Content-Type': 'application/json' }
+    });
+
+    console.log(`📥 [${timestamp}] ${type} webhook received - Status ${statusCode}`);
+    console.log(JSON.stringify(req.body, null, 2));
+
+    res.status(statusCode).json(response);
+  });
+
+  // View logs for each webhook
+  app.get(`/logs/${type}`, (req, res) => {
+    res.json(logs[type]);
+  });
+
+  // Clear logs
+  app.delete(`/logs/${type}`, (req, res) => {
+    logs[type].length = 0;
+    requestCounts[type] = 0;
+    res.json({ message: `Logs for ${type} cleared` });
+  });
 });
 
 app.listen(port, () => {
-  console.log(`Mock webhook service listening on http://localhost:${port}/webhook`);
+  console.log(`🚀 Webhook Monitor running at http://localhost:${port}`);
 });

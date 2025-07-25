@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>batch-status-config - Webhook Monitor</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
+    #left-panel {
+      width: 30%; min-width: 200px; max-width: 500px;
+      border-right: 1px solid #ccc;
+      overflow-y: auto; padding: 10px;
+      resize: horizontal; overflow: auto;
+    }
+    #right-panel {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      min-width: 0;
+    }
+    .status-200 { color: green; font-weight: bold; }
+    .status-400, .status-500 { color: red; font-weight: bold; }
+    .status-default { color: gray; }
+    .event-item:hover { background-color: #eef; }
+    .selected { background-color: #ddf !important; }
+    pre { background: #f5f5f5; padding: 10px; white-space: pre-wrap; word-break: break-word; }
+    .hidden { display: none; }
+    .label { font-weight: bold; margin-top: 10px; display: block; }
+    .section { margin-bottom: 20px; }
+    .diff-container { display: flex; gap: 20px; flex-wrap: wrap; }
+    .diff-box { flex: 1 1 45%; background: #f9f9f9; border: 1px solid #ccc; padding: 10px; overflow-x: auto; }
+    .diff-add { background-color: #d4fcdc; }
+    .diff-remove { background-color: #fcd4d4; }
+    button.toggle { margin: 5px 5px 5px 0; font-size: 0.9em; }
+    input[type=text] { width: 100%; padding: 6px; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div id="left-panel">
+    <input type="text" id="search" placeholder="🔍 Search by keyword or batchId..." oninput="renderEventList()" />
+    <div id="event-list"></div>
+    <button onclick="clearLogs()" style="margin-top: 10px; width: 100%;">🗑️ Clear Logs</button>
+  </div>
+  <div id="right-panel">
+    <h2>Batch Status on SIT Config Company - Event Details</h2>
+    <div>
+      <button onclick="toggleAll()">🔁 Toggle All</button>
+      <button onclick="clearSelection()">❌ Clear</button>
+      <button onclick="compareSelected()">🧮 Compare Selected</button>
+    </div>
+    <div id="event-details"></div>
+  </div>
+
+  <script>
+    const logType = 'batch-status-config';
+    let allEvents = [];
+    let selectedEventIds = [];
+    let allHidden = true;
+
+    async function fetchLogs() {
+      const res = await fetch(`/logs/${logType}`);
+      const data = await res.json();
+      allEvents = data.reverse();
+      renderEventList();
+    }
+
+    async function clearLogs() {
+      const confirmed = confirm('Are you sure you want to clear all logs?');
+      if (!confirmed) return;
+      await fetch(`/logs/${logType}`, { method: 'DELETE' });
+      allEvents = [];
+      selectedEventIds = [];
+      renderEventList();
+      renderEventDetails();
+    }
+
+    function renderEventList() {
+      const keyword = document.getElementById('search').value.toLowerCase();
+      const keywordHighlight = keyword.trim() ? new RegExp(`(${keyword})`, 'gi') : null;
+      const container = document.getElementById('event-list');
+      container.innerHTML = '';
+
+      allEvents.forEach((event, index) => {
+        const id = `${index}`;
+        const div = document.createElement('div');
+        div.className = 'event-item' + (selectedEventIds.includes(id) ? ' selected' : '');
+        const statusCode = event.status || event.responseStatus || '-';
+        const statusClass = `status-${statusCode}`;
+        const localTime = new Date(event.timestamp).toLocaleString();
+        let label = `${localTime} [${statusCode}]`;
+        if (keywordHighlight) {
+          label = label.replace(keywordHighlight, '<mark>$1</mark>');
+        }
+        div.innerHTML = `<span class='${statusClass}'>${label}</span>`;
+        div.onclick = () => toggleSelect(id);
+        container.appendChild(div);
+      });
+    }
+
+    function toggleSelect(id) {
+      const indexInSelection = selectedEventIds.indexOf(id);
+      if (indexInSelection >= 0) {
+        selectedEventIds.splice(indexInSelection, 1);
+      } else {
+        selectedEventIds.push(id);
+      }
+      renderEventList();
+      renderEventDetails();
+    }
+
+    function clearSelection() {
+      selectedEventIds = [];
+      renderEventList();
+      renderEventDetails();
+    }
+
+    function toggleAll() {
+      allHidden = !allHidden;
+      document.querySelectorAll('.toggle-target').forEach(el => {
+        el.classList.toggle('hidden', allHidden);
+      });
+    }
+
+    function renderEventDetails() {
+      const container = document.getElementById('event-details');
+      container.innerHTML = '';
+
+      selectedEventIds.forEach(id => {
+        const index = parseInt(id);
+        const event = allEvents[index];
+        if (!event) return;
+
+        const section = document.createElement('div');
+        section.className = 'section';
+        section.innerHTML = `
+          <h3>🕒 ${new Date(event.timestamp).toLocaleString()}</h3>
+          <button class="toggle" onclick="document.getElementById('${id}-req-body').classList.toggle('hidden')">Toggle Request Body</button>
+          <button class="toggle" onclick="document.getElementById('${id}-req-headers').classList.toggle('hidden')">Toggle Request Headers</button>
+          <button class="toggle" onclick="document.getElementById('${id}-res-body').classList.toggle('hidden')">Toggle Response Body</button>
+          <button class="toggle" onclick="document.getElementById('${id}-res-headers').classList.toggle('hidden')">Toggle Response Headers</button>
+
+          <span class="label">Request Body:</span>
+          <button class='toggle' onclick="copyToClipboard('${id}-req-body')">📋 Copy</button>
+          <pre id="${id}-req-body" class="toggle-target ${allHidden ? 'hidden' : ''}">${JSON.stringify(event.body || {}, null, 2)}</pre>
+
+          <span class="label">Request Headers:</span>
+          <button class='toggle' onclick="copyToClipboard('${id}-req-headers')">📋 Copy</button>
+          <pre id="${id}-req-headers" class="toggle-target ${allHidden ? 'hidden' : ''}">${JSON.stringify(event.headers || {}, null, 2)}</pre>
+
+          <span class="label">Response Body:</span>
+          <button class='toggle' onclick="copyToClipboard('${id}-res-body')">📋 Copy</button>
+          <pre id="${id}-res-body" class="toggle-target ${allHidden ? 'hidden' : ''}">${JSON.stringify(event.responseBody || {}, null, 2)}</pre>
+
+          <span class="label">Response Headers:</span>
+          <button class='toggle' onclick="copyToClipboard('${id}-res-headers')">📋 Copy</button>
+          <pre id="${id}-res-headers" class="toggle-target ${allHidden ? 'hidden' : ''}">${JSON.stringify(event.responseHeaders || {}, null, 2)}</pre>
+
+          <span class="label">Response Status:</span>
+          <pre id="${id}-res-status" class="toggle-target ${allHidden ? 'hidden' : ''}">${event.status || event.responseStatus || 'Unknown'}</pre>
+        `;
+        container.appendChild(section);
+      });
+    }
+
+    function diffJson(oldObj, newObj) {
+      const oldStr = JSON.stringify(oldObj, null, 2).split('\n');
+      const newStr = JSON.stringify(newObj, null, 2).split('\n');
+      const diffOld = oldStr.map((line, i) => newStr[i] !== line ? `<div class='diff-remove'>${line}</div>` : `<div>${line}</div>`).join('');
+      const diffNew = newStr.map((line, i) => oldStr[i] !== line ? `<div class='diff-add'>${line}</div>` : `<div>${line}</div>`).join('');
+      return { diffOld, diffNew };
+    }
+
+    function compareSelected() {
+      if (selectedEventIds.length !== 2) {
+        alert('Please select exactly 2 events to compare.');
+        return;
+      }
+      const [event1, event2] = selectedEventIds.map(id => allEvents[parseInt(id)]);
+      const container = document.getElementById('event-details');
+      container.innerHTML = '<h3>🔍 Compare View</h3>';
+
+      const sections = ['body', 'headers', 'responseBody', 'responseHeaders'];
+      sections.forEach(section => {
+        const diff = diffJson(event1[section] || {}, event2[section] || {});
+        const div = document.createElement('div');
+        div.className = 'section';
+        div.innerHTML = `
+          <div class="label">${section}</div>
+          <div class="diff-container">
+            <div class="diff-box"><strong>Event 1</strong>${diff.diffOld}</div>
+            <div class="diff-box"><strong>Event 2</strong>${diff.diffNew}</div>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function copyToClipboard(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const text = el.innerText;
+      navigator.clipboard.writeText(text).then(() => alert('Copied!'));
+    }
+
+    fetchLogs();
+    setInterval(fetchLogs, 5000);
+  </script>
+</body>
+</html>
