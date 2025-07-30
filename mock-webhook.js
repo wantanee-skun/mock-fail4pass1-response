@@ -38,7 +38,7 @@ Object.keys(logs).forEach((type) => {
     //   response = { message: `${type} received`, timestamp };
     // }
 
-    statusCode = 400; 
+    statusCode = 200; 
     response = { error: `${type} failed`, timestamp };
 
     logs[type].push({
