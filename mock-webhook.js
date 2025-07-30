@@ -30,7 +30,7 @@ Object.keys(logs).forEach((type) => {
     requestCounts[type]++;
 
     let response, statusCode;
-    if (requestCounts[type] % 4 !== 0) {
+    if (requestCounts[type] % 5 !== 0) {
       statusCode = 400;
       response = { error: `${type} failed`, timestamp };
     } else {
