@@ -30,16 +30,13 @@ Object.keys(logs).forEach((type) => {
     requestCounts[type]++;
 
     let response, statusCode;
-    // if (requestCounts[type] % 6 !== 0) {
-    //   statusCode = 400; 
-    //   response = { error: `${type} failed`, timestamp };
-    // } else {
-    //   statusCode = 200;
-    //   response = { message: `${type} received`, timestamp };
-    // }
-
-    statusCode = 200; 
-    response = { error: `${type} failed`, timestamp };
+    if (requestCounts[type] % 8 !== 0) {
+      statusCode = 400; 
+      response = { error: `${type} failed`, timestamp };
+    } else {
+      statusCode = 200;
+      response = { message: `${type} received`, timestamp };
+    }
 
     logs[type].push({
       timestamp,
